@@ -1,0 +1,6 @@
+[pyproject]
+name = "testing-utils"
+version = "0.1.0"
+dependencies = [
+  "beautifulsoup4>=4.12"
+]
