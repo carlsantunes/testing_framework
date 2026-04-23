@@ -649,37 +649,3 @@ class ManageQualityAssurance():
 
   # def check_view_asset(self):
   #   # executar um select à tabela e à respetiva view para ver se dá algum erro.
-
-
-from pyspark.sql import SparkSession
-
-if __name__ == "__main__":
-  spark = (
-          SparkSession
-          .builder
-          .master("local[1]")
-          .appName("pytest-pyspark")
-          .getOrCreate()
-      )
-
-
-  from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType
-
-  table_schema = StructType([
-        StructField("buk_test1", IntegerType(), nullable=False),
-        StructField("buk_test2", StringType(), nullable=True),
-        StructField("amt_", DoubleType(), nullable=True),
-        StructField("dtm_created_at", TimestampType(), nullable=True),
-    ])
-      
-  # insert test data
-  data = [
-      (1, "Alice", 100.5, None),
-      (2, "Bob", 200.0, None),
-  ]
-  df = spark.createDataFrame(data, schema=table_schema)
-
-  catalog="teste"
-  schema="teste"
-  table="teste"
-  ManageQualityAssurance(df, catalog, schema, table)

@@ -4,10 +4,17 @@ import os
 
 @pytest.fixture(scope="session")
 def spark():
+
+    is_databricks = os.environ.get("DATABRICKS_RUNTIME_VERSION") is not None
     
-    if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
-        spark = spark  # provided by Databricks
+    if is_databricks:
+        # Databricks already provides Spark
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError("No active SparkSession found in Databricks")
+        yield spark
     else:
+        # Local / CI / pytest
         spark = (
             SparkSession
             .builder
@@ -15,6 +22,5 @@ def spark():
             .appName("pytest-pyspark")
             .getOrCreate()
         )
-
-    yield spark
-    spark.stop()
+        yield spark
+        spark.stop()
