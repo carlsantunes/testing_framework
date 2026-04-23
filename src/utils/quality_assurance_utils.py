@@ -1,12 +1,16 @@
-# Databricks notebook source
 # Class with checks (methods) to test if a data asset follows quality standards (table contract)
 from pyspark.sql.functions import col, when, sum, min, max, count, to_timestamp, lit, trim, upper, monotonically_increasing_id, coalesce, lead, row_number, size, length, year, month, quarter, weekofyear, dayofmonth, hour, minute, second, countDistinct
-from pyspark.sql.types import StringType, MapType
+from pyspark.sql.functions import struct, sha2, to_json, desc
+from pyspark.sql.types import StringType, MapType, StructField
 from pyspark.sql.window import Window
 import re # Regular expressions
 import functools
+import time
 
+# custom modules
+from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
 
+log_setup_logic()
 
 def timing(func):
   @functools.wraps(func)
@@ -21,7 +25,7 @@ def timing(func):
 
 
 class ManageQualityAssurance():
-  def __init__(self, catalog, schema, table):
+  def __init__(self, df, catalog, schema, table):
     """
     Class containing a list of data quality checks that can be performed on a table/view. 
     Checks are either:
@@ -51,7 +55,7 @@ class ManageQualityAssurance():
       self.table_type = 'N/A'
 
     # Get dataframe with table data.
-    self.df_table = spark.read.table(self.full_table_name)
+    self.df_table = df
 
     # Get columns with "(PK)" in their comment (table columns comments need to follow convention).
     # These are the list of primary keys.
@@ -92,7 +96,7 @@ class ManageQualityAssurance():
       df = qa.get_df(version=145)
     """
     if version:
-      return spark.read.format("delta").option("versionAsOf", version).table(self.full_table_name)
+      return #return spark.read.format("delta").option("versionAsOf", version).table(self.full_table_name)
     else:
       return self.df_table
 
@@ -256,7 +260,7 @@ class ManageQualityAssurance():
       has_overlaps = summary_df.take(1) != []
 
     if summary_df.count() != 0:
-      display(summary_df)
+      return summary_df
     else:
       log_check_pass(f"No overlaps found")
 
@@ -319,7 +323,7 @@ class ManageQualityAssurance():
           .filter(col("cnt") > 1)
       )
 
-      display(dup_groups)
+      unique = {'duplicates': dup_groups}
 
       summary_df = (
         dup_groups.groupBy(sk)
@@ -330,7 +334,8 @@ class ManageQualityAssurance():
                   .orderBy(desc("dup_groups"), desc("dup_rows"))
       )
 
-      display(summary_df)
+      unique['summary_df'] = summary_df
+      return unique
  
   @timing
   def print_suks_1_2(self):
@@ -355,7 +360,7 @@ class ManageQualityAssurance():
     df_filtered_suks = self.df_table.filter(condition)
 
     # Show them
-    display(df_filtered_suks)
+    return df_filtered_suks
 
   def distinct_values_for_each_column(self):
     """
@@ -367,6 +372,7 @@ class ManageQualityAssurance():
     distinct_tables = {}  # dictionary to store DataFrames per column
     total_rows = self.df_table.count() # Total number of rows to compute relative frequency
 
+    distincts = []
     for c in self.df_table.columns:
       # Select only the column, get distinct values
       distinct_tables[c] = (
@@ -380,10 +386,9 @@ class ManageQualityAssurance():
         )
         .orderBy("count", ascending=False)
       )
+      distincts.append({"table_name": c, "dataframe": distinct_tables[c]})
 
-    for c, table in distinct_tables.items():
-      log_info(f"Distinct values for column '{c}':")
-      display(table)
+    return distincts
 
   @timing
   def max_min_values_for_each_column(self):
@@ -429,7 +434,7 @@ class ManageQualityAssurance():
       agg_df = self.df_table.agg(*agg_exprs)
 
       # Show result
-      display(agg_df)
+      return agg_df
     else:
       log_info("No columns found that start with 'qty' or 'amt'.")
   
@@ -463,8 +468,9 @@ class ManageQualityAssurance():
       for c in self.df_table.columns
     ])
 
-    display(null_blank_counts)
+    null_blank_counts
 
+    filtered = []
     # Build condition to check for null or blank in any column
     null_or_blank_condition = None
     for c in self.df_table.columns:
@@ -472,8 +478,10 @@ class ManageQualityAssurance():
         
       # Check if there are any matching rows
       if filtered_df.count() > 0:
-        log_warn(f"Row with null or blank values in column: {c}")
-        display(filtered_df)
+        filtered.append(filtered_df)
+
+        filtered.append(filtered_df)
+      return {"counts": null_blank_counts, "dataframes": filtered}
 
   @timing
   def key_nulls(self):
@@ -492,7 +500,7 @@ class ManageQualityAssurance():
       null_rows = self.df_table.filter(col(c).isNull())
       if null_rows.count() > 0:
         log_check_not_pass(f"Rows with NULL in primary key column: {c}")
-        display(null_rows)
+        return null_rows
       else:
         log_check_pass(f"Primary key column {c} does not have null values")
 
@@ -519,7 +527,7 @@ class ManageQualityAssurance():
     
     if has_duplicates:
       log_check_not_pass(f"Table {self.full_table_name} has duplicates")
-      display(dup_groups)  # shows each duplicate key and its frequency
+      return dup_groups  # shows each duplicate key and its frequency
     else:
       log_check_pass(f"Table {self.full_table_name} does not have duplicates")
 
@@ -532,7 +540,7 @@ class ManageQualityAssurance():
       qa.describe_history()
     """
     try:
-      display(spark.sql(f"describe history {self.full_table_name}"))
+      return #display(spark.sql(f"describe history {self.full_table_name}"))
     except Exception as e:
       log_check_not_pass(f"Error {e}. Probably because table {self.full_table_name} is not a table. Skipping history check.")
 
@@ -544,7 +552,7 @@ class ManageQualityAssurance():
     Example:
       qa.key_duplicates()
     """
-    display(spark.sql(f"describe extended {self.full_table_name}"))
+    #display(spark.sql(f"describe extended {self.full_table_name}"))
 
   @timing
   def records_validity_dim(self):
@@ -572,7 +580,7 @@ class ManageQualityAssurance():
       log_check_pass("There are no rows where flg_is_valid_now = 1 but dtm_valid_to != '9999-12-31 23:59:59.999999'")
 
     # show the offending rows
-    display(invalid_rows)
+    return invalid_rows
 
   @timing
   def distinct_suk_buk(self):
@@ -610,8 +618,8 @@ class ManageQualityAssurance():
       suk_col, buk_col = pair
       if df_inconsistent.count() != 0:
         log_check_not_pass(f"Same suk value found for several buk values")
-        display(df_inconsistent)
         flg_inconsistency = True
+        # display(df_inconsistent)
 
     if not flg_inconsistency: 
       log_check_pass(f"Each suk value corresponds to one and only one buk value")
@@ -626,7 +634,7 @@ class ManageQualityAssurance():
 
     if inconsistent.count() != 0:
       log_check_not_pass(f"Same buk value found for several suk values")
-      display(inconsistent)
+      return inconsistent
     else:
       log_check_pass(f"Each (buk, dtm_scd_valid_from) value corresponds to one and only one suk")
 
@@ -641,3 +649,37 @@ class ManageQualityAssurance():
 
   # def check_view_asset(self):
   #   # executar um select à tabela e à respetiva view para ver se dá algum erro.
+
+
+from pyspark.sql import SparkSession
+
+if __name__ == "__main__":
+  spark = (
+          SparkSession
+          .builder
+          .master("local[1]")
+          .appName("pytest-pyspark")
+          .getOrCreate()
+      )
+
+
+  from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType
+
+  table_schema = StructType([
+        StructField("buk_test1", IntegerType(), nullable=False),
+        StructField("buk_test2", StringType(), nullable=True),
+        StructField("amt_", DoubleType(), nullable=True),
+        StructField("dtm_created_at", TimestampType(), nullable=True),
+    ])
+      
+  # insert test data
+  data = [
+      (1, "Alice", 100.5, None),
+      (2, "Bob", 200.0, None),
+  ]
+  df = spark.createDataFrame(data, schema=table_schema)
+
+  catalog="teste"
+  schema="teste"
+  table="teste"
+  ManageQualityAssurance(df, catalog, schema, table)

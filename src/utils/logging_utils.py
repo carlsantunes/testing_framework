@@ -18,10 +18,7 @@ YELLOW = "\033[33m"
 ORANGE = "\033[38;5;208m"
 RESET = "\033[0m"
 
-# COMMAND ----------
-
-# Initialize Logs
-def init_logs():
+def log_setup_logic():
   # Set timezone
   tz = pytz.timezone('Europe/Lisbon')
 
@@ -49,8 +46,8 @@ def init_logs():
 
   logger.addHandler(stream_handler)
 
-  log_info("Logs initialized")
-  log_info("This log is timestamped in Europe/Lisbon timezone")
+  logging.info("Logs initialized")
+  logging.info("This log is timestamped in Europe/Lisbon timezone")
 
 # COMMAND ----------
 
@@ -72,7 +69,3 @@ def log_check_pass(message):
 
 def log_check_not_pass(message):
   logging.warning(f"{ORANGE}{message}{RESET}")
-
-# COMMAND ----------
-
-init_logs()
