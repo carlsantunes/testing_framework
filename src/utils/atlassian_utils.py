@@ -1,21 +1,14 @@
-Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
+# Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
 
 
 
 %pip install beautifulsoup4
 
+from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
 
-
-%run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Logging Utils"
-
-
-
-%run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Notebook Utils"
-
-
+from src.utils.notebook_utils import ManageNotebook
 
 from bs4 import BeautifulSoup
-
 
 
 class JiraIssue():

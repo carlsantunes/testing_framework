@@ -32,7 +32,6 @@ import time # Process times
 from datetime import datetime, timezone
 from requests.auth import HTTPBasicAuth # Authentication for API requests
 import sys # To exit execution
-
 from pyspark.sql.types import StructField
 from functools import reduce
 
@@ -43,7 +42,11 @@ from functools import reduce
 
 # COMMAND ----------
 
-# MAGIC %run "/Users/cvantunes@ext.worten.pt/Automation/src/utils/logging_utils"
+from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
+from src.utils.databricks_utils import ManageDatabricks
+from src.utils.quality_assurance_utils import ManageQualityAssurance
+from src.utils.governance_utils import ManageGovernance
+from src.utils.atlassian_utils import ManageAtlassian
 
 # COMMAND ----------
 
@@ -53,42 +56,6 @@ from functools import reduce
 # COMMAND ----------
 
 # MAGIC %run "/Users/cvantunes@ext.worten.pt/Automation/Config File"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC File with methods to interact with databricks (create jobs, start clusters, create notebooks, etc)
-
-# COMMAND ----------
-
-# MAGIC %run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/src/utils/databricks_utils"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC File with Quality Assurance class and all its checks
-
-# COMMAND ----------
-
-# MAGIC %run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/src/utils/quality_assurance_utils"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
-
-# COMMAND ----------
-
-# MAGIC %run "/Users/cvantunes@ext.worten.pt/Automation/src/utils/atlassian_utils"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC Class to check the quality of documentation with respect to the governance guidelines
-
-# COMMAND ----------
-
-# MAGIC %run "/Users/cvantunes@ext.worten.pt/Automation/src/utils/governance_utils"
 
 # COMMAND ----------
 
