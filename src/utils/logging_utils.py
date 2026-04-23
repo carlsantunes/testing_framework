@@ -1,4 +1,3 @@
-# Databricks notebook source
 # Class to manage loggings. Has 5 methods: log_info, log_warn, log_error, log_check_pass, log_check_not_pass
 
 import logging
