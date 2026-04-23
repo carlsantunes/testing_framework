@@ -1,41 +1,25 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC ## Imports
-
-# COMMAND ----------
-
+# Imports
 import base64 # encode/decode string with notebook content to send/receive as payload for API request
 import time # Process times
 import re # regular expressions
 import json # Manage JSON content
 from textwrap import dedent 
-
-
 import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-# COMMAND ----------
+## Logging
+# Class to manage loggings. Has 5 methods: log_info, log_warn, log_error, log_check_pass, log_check_not_pass
 
-# MAGIC %md
-# MAGIC ## Logging
-# MAGIC Class to manage loggings. Has 5 methods: log_info, log_warn, log_error, log_check_pass, log_check_not_pass
 
-# COMMAND ----------
+%run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Logging Utils"
 
-# MAGIC %run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Logging Utils"
 
-# COMMAND ----------
+## Notebook Classes
 
-# MAGIC %md
-# MAGIC ## Notebook Classes
 
-# COMMAND ----------
+### Column class
 
-# MAGIC %md
-# MAGIC ### Column class
-
-# COMMAND ----------
 
 ## Column class (stores column metadata)
 class Column:
@@ -56,13 +40,8 @@ class Column:
   def __str__(self):
     return f"Column name: {self.name}, data_type: {self.data_type}, description: '{self.description}', primary_key: {self.primary_key}, flg_is_encrypted: {self.flg_is_encrypted}, validation: {self.validation}"
 
+### Table class
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Table class
-
-# COMMAND ----------
 
 ## Table class (stores table metadata)
 class Table:
@@ -116,12 +95,8 @@ class Table:
   def __str__(self):
     return f"\nTable Name: {self.name} \nSchema: {self.schema} \nCatalog: {self.catalog}"
 
-# COMMAND ----------
+### Complex and Simple Table Subclasses
 
-# MAGIC %md
-# MAGIC ### Complex and Simple Table Subclasses
-
-# COMMAND ----------
 
 ## SourceTable class (stores source tables metadata)
 class SimpleTable(Table):
@@ -154,12 +129,7 @@ class ComplexTable(Table):
     columns_str = "\n".join([str(column) for column in self.columns])
     return f"\nTable Name: {self.name} \nSchema: {self.schema} \nCatalog: {self.catalog} \nTable Type abv: {self.type_abv} \nTable Type: {self.type} \nPrimary Key: {self.primary_key} \nColumns to update: {self.columns_to_update} \nTable Description: {self.description} \nView Description: {self.view_description} \nColumns: {columns_str}"
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Notebook class
-
-# COMMAND ----------
+### Notebook class
 
 ## Notebook Class (stores notebook metadata)
 class Notebook:
@@ -194,15 +164,8 @@ class Notebook:
             f"QA Notebook Path: {self.qa_notebook_path}\n"
           )
 
+### PreIngNotebook Subclass
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### PreIngNotebook Subclass
-
-# COMMAND ----------
-
-#
 class PreIngNotebook(Notebook):
   def __init__(self, notebook_name, squad, source_tables, final_table, notebook_type, confluence_url, user_email):
     super().__init__(notebook_name, squad, source_tables, final_table, notebook_type, confluence_url, user_email)
@@ -614,14 +577,8 @@ class PreIngNotebook(Notebook):
 
     return json.dumps(json_lines, indent=4) 
 
-# COMMAND ----------
+### DWCLNotebok Subclass
 
-# MAGIC %md
-# MAGIC ### DWCLNotebok Subclass
-
-# COMMAND ----------
-
-#
 class DWCLNotebook(Notebook):
   def __init__(self, notebook_name, squad, source_tables, final_table, notebook_type, confluence_url, user_email):
     super().__init__(notebook_name, squad, source_tables, final_table, notebook_type, confluence_url, user_email)
@@ -1065,12 +1022,7 @@ class DWCLNotebook(Notebook):
       self.create_code_end_control()
     ])
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### WDLNotebook Subclass
-
-# COMMAND ----------
+### WDLNotebook Subclass
 
 #
 class WDLNotebook(Notebook):

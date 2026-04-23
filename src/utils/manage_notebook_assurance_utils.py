@@ -1,8 +1,4 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC # Class with checks (methods) to test if a notebook is implemented following the guidelines and best practices
-
-# COMMAND ----------
+# Class with checks (methods) to test if a notebook is implemented following the guidelines and best practices
 
 class ManageNotebookAssurance():
   def __init__(self, notebook_path):

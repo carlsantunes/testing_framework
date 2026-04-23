@@ -1,8 +1,4 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC Class to check the quality of documentation with respect to the governance guidelines
-
-# COMMAND ----------
+# Class to check the quality of documentation with respect to the governance guidelines
 
 class ManageGovernance():
   def __init__(self, notebook):

@@ -1,12 +1,7 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC Class to interact with databrick. Create git folders, create notebooks, start clusters, start jobs, etc.
-
-# COMMAND ----------
+# Class to interact with databrick. Create git folders, create notebooks, start clusters, start jobs, etc.
 
 import requests
 
-# COMMAND ----------
 
 class ManageDatabricks():
   def __init__(self, databricks_token, databricks_instance, atlassian_token, user_email):

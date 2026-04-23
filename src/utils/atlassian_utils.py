@@ -1,24 +1,22 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
+Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
 
-# COMMAND ----------
 
-# MAGIC %pip install beautifulsoup4
 
-# COMMAND ----------
+%pip install beautifulsoup4
 
-# MAGIC %run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Logging Utils"
 
-# COMMAND ----------
 
-# MAGIC %run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Notebook Utils"
+%run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Logging Utils"
 
-# COMMAND ----------
+
+
+%run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Notebook Utils"
+
+
 
 from bs4 import BeautifulSoup
 
-# COMMAND ----------
+
 
 class JiraIssue():
   def __init__(self, content):
@@ -39,7 +37,7 @@ class JiraIssue():
       subtasks_summary.append(subtask['fields']['summary'])
     return subtasks_summary
 
-# COMMAND ----------
+
 
 class ManageAtlassian():
   def __init__(self, atlassian_token, user_email):

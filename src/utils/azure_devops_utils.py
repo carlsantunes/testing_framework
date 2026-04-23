@@ -1,8 +1,5 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC Class to interact with Azure DevOps. Create branches.
+# Class to interact with Azure DevOps. Create branches.
 
-# COMMAND ----------
 
 class ManageAzureDevOps():
   def __init__(self, azure_devops_token, organization, project):
