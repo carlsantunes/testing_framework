@@ -1,15 +1,11 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC Class to manage loggings. Has 5 methods: log_info, log_warn, log_error, log_check_pass, log_check_not_pass
-
-# COMMAND ----------
+# Class to manage loggings. Has 5 methods: log_info, log_warn, log_error, log_check_pass, log_check_not_pass
 
 import logging
 import pytz
 import sys
 from datetime import datetime
 
-# COMMAND ----------
 
 # Colors definitions
 GREEN = "\033[32m"
@@ -49,7 +45,6 @@ def log_setup_logic():
   logging.info("Logs initialized")
   logging.info("This log is timestamped in Europe/Lisbon timezone")
 
-# COMMAND ----------
 
 # Write an information message to logs
 def log_info(message):
