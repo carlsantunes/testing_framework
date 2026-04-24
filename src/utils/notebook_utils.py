@@ -12,7 +12,7 @@ from urllib.parse import urljoin
 # Class to manage loggings. Has 5 methods: log_info, log_warn, log_error, log_check_pass, log_check_not_pass
 
 
-%run "/Workspace/Users/cvantunes@ext.worten.pt/Automation/Utils/Logging Utils"
+from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
 
 
 ## Notebook Classes
