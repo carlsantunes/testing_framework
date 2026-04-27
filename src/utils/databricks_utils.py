@@ -1,6 +1,8 @@
 # Class to interact with databrick. Create git folders, create notebooks, start clusters, start jobs, etc.
 
 import requests
+import base64 # encode/decode string with notebook content to send/receive as payload for API request
+import json # Manage JSON content
 from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
 
 
