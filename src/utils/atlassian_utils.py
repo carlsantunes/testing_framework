@@ -1,11 +1,224 @@
 # Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
+from __future__ import annotations
+from typing import Any, Optional, List, Dict, Tuple, Callable
 
+
+from bs4 import BeautifulSoup, Tag
+from requests.auth import HTTPBasicAuth
+import requests
+import json
+import re
+
+# Custom modules
 from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
+from src.utils.notebook_utils import Notebook, Column, SimpleTable, ComplexTable, DWCLNotebook, PreIngNotebook
 
-from src.utils.notebook_utils import Notebook
 
-from bs4 import BeautifulSoup
+def parse_spec_table(table: Tag) -> dict:
+    """
+    From confluence table specification page, read 'Properties Table' and assemble info in a dictionary
 
+    Args:
+      table (Tag): 'Properties Table' in beautiful soup format.
+
+    Returns:
+      dictionary: python dictionary with the same information as the table.
+
+    Example:
+      spec_dict = parse_spec_table(properties_table)
+    """
+    # List with all table rows
+    rows = table.find_all("tr")
+
+    # Dictionary high-level schema (dictionary of dictionaries or lists)
+    result = {
+        "table": {},
+        "notebook": {},
+        "sources": [],
+        "orchestration": {},
+        "jira": {}
+    }
+
+    current_section = None
+    in_sources = False
+
+    # Iterate over each row
+    for row in rows:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+
+        # ===== Section header detection =====
+        if len(cells) == 1 or cells[0].get("colspan") == "4":
+            header = cells[0].get_text(strip=True).lower()
+            if header in result:
+                current_section = header
+                in_sources = (header == "sources")
+            continue
+
+        # ===== SOURCES section =====
+        if current_section == "sources":
+            # Skip header row
+            if cells[0].find("strong"):
+                continue
+
+            source = {
+                "full_table_name": clean(cells[0].get_text()),
+                "abbreviation": clean(cells[1].get_text()),
+                "filter": clean(cells[2].get_text()),
+                "history": clean(cells[3].get_text())
+            }
+            result["sources"].append(source)
+            continue
+
+        # ===== ORCHESTRATION section =====
+        if current_section == "orchestration":
+            key = clean(cells[0].get_text())
+
+            # List handling
+            ul = row.find("ul")
+            if ul:
+                value = [clean(li.get_text()) for li in ul.find_all("li")]
+            else:
+                value = clean(cells[1].get_text())
+
+            result["orchestration"][key] = value
+            continue
+
+        # ===== GENERAL key-value sections =====
+        key = clean(cells[0].get_text())
+        value = clean(cells[1].get_text())
+
+        if current_section in result:
+            result[current_section][key] = value
+
+    return result
+
+
+def clean(text: str, lower_case: bool = True) -> str:
+    """
+    Clean and standardize table cell content
+
+    Args:
+      cell text (str): raw content present in a table cell.
+      lower_case (bool): indicates if we want text in lower case
+
+    Returns:
+      str: cleaned and standardized table cell content.
+
+    Example:
+      clean_cell = clean(cell)
+    """
+    if not text:
+        return ""
+    text = text.replace("\xa0", " ")
+    if lower_case == True:
+       return re.sub(r"\s+", " ", text).strip().lower()
+    else:
+       return re.sub(r"\s+", " ", text).strip()
+
+
+def extract_paragraphs(td):
+    """
+    Extract ALL meaningful <p> text from a cell, preserving order.
+    """
+    values = []
+    for p in td.find_all("p", recursive=False):
+        txt = clean(p.get_text())
+        if txt and txt != "-":
+            values.append(txt)
+    return values
+
+
+def extract_ordered_list(td):
+    ol = td.find("ol")
+    if not ol:
+        return []
+    return [clean(li.get_text()) for li in ol.find_all("li")]
+
+
+def parse_mapping_table(table: Tag) -> dict:
+    """
+    From confluence table specification page, read 'Mapping Table' and assemble info into a dictionary
+
+    Args:
+      table (Tag): 'Mapping Table' in beautiful soup format.
+
+    Returns:
+      dictionary: python dictionary with the same information as the table.
+
+    Example:
+      mapping_dict = parse_mapping_table(mapping_table)
+    """
+
+    # Get all rows in a list
+    rows = table.find_all("tr")
+
+    # High-level dictionary content
+    columns = []
+    table_level_logic = None
+    merge_logic_parts = []
+
+    current_col = None
+    header_found = False
+
+    # Iterate rows
+    for row in rows:
+        
+        # Get list of cells
+        cells = row.find_all("td")
+
+        # Skip title row ("Consolidation")
+        if len(cells) == 1 and "consolidation" in clean(cells[0].get_text()):
+            continue
+
+        # Detect header row ("Column Name", "Data Type", etc.)
+        if not header_found:
+            if any("column name" in clean(td.get_text()) for td in cells):
+                header_found = True
+            continue
+
+        col_name = clean(cells[0].get_text())
+
+        # ---- Start of a NEW column ----
+        if col_name:
+            current_col = {
+                "column_name": col_name,
+                "data_type": clean(cells[1].get_text()),
+                "column_description": clean(cells[2].get_text(), lower_case = False),
+                "full_table_name": [],
+                "source_columns": [],
+                "column_level_logic": clean(cells[5].get_text()),
+            }
+
+            # ---- Source schema/table ----
+            for src in extract_paragraphs(cells[3]):
+                if src not in current_col["full_table_name"]:
+                    current_col["full_table_name"].append(src)
+
+            # ---- Source columns ----
+            for sc in extract_paragraphs(cells[4]):
+                current_col["source_columns"].append(sc)
+
+            # ---- Table-level logic (only once) ----
+            if table_level_logic is None:
+                table_level_logic = extract_ordered_list(cells[6])
+
+            # ---- Merge logic ----
+            if len(merge_logic_parts) == 0:
+                for ml in extract_paragraphs(cells[7]):
+                    if ml not in merge_logic_parts:
+                        merge_logic_parts.append(ml)
+
+            # Append column
+            if current_col is not None:
+                columns.append(current_col)
+
+    return {
+        "columns": columns,
+        "table_level_logic": table_level_logic or [],
+        "merge_logic": merge_logic_parts
+    }
 
 class JiraIssue():
   def __init__(self, content):
@@ -26,10 +239,9 @@ class JiraIssue():
       subtasks_summary.append(subtask['fields']['summary'])
     return subtasks_summary
 
-
-
 class ManageAtlassian():
   def __init__(self, atlassian_token, user_email):
+    log_setup_logic()
     self.atlassian_token = atlassian_token
     self.user_email = user_email
     self.basic_auth = HTTPBasicAuth(user_email, atlassian_token)
@@ -100,8 +312,21 @@ class ManageAtlassian():
   
   # Read tables's confluence page content
   def get_page(self, confluence_url):
-    
-    # get confluence page url
+    """
+        Get confluence html page.
+
+    Args:
+        confluence_url (str): URL of confluence page to retrieve its html.
+
+    Returns:
+        str: confluence page title.
+        BeautifulSoup: BeautifulSoup with html content.
+
+    Example:
+        page_title, page_html_body = get_page(confluence_url)
+    """
+
+    # Get confluence page url in API format
     page_id = confluence_url.split("/")[-2]
     confluence_api_url = f"https://worten.atlassian.net/wiki/rest/api/content/{page_id}?expand=body.storage"
     log_info(f"Corresponding Confluence Page URL: {confluence_api_url}")
@@ -170,315 +395,283 @@ class ManageAtlassian():
 
     
 
-  #
+
   def map_design_to_notebook(self, page_title, page_body, confluence_url):
+    """
+        Create a notebook object with data from html page (html tables need to be in conventioned standard format).
 
-    #check_table_design_template(confluence_tables)
+    Args:
+        page_title (str): confluence page title.
+        page_body (BeautifulSoup): html of table design content.
+        confluence_url (str): URL of confluence page to retrieve its html.
 
-    # Retrieve title
+    Returns:
+        Notebook: object that represents a notebook (data pipeline) in databricks
+
+    Example:
+        nb = confluence.map_design_to_notebook(page_title, page_html_body, confluence_url)
+    """
+
+    # Retrieve notebook type
     notebook_type = page_title.split('-')[0].strip().upper()
     log_info(f"Processing requirements for a {notebook_type} table")
 
-    #
+    # Get one 'Properties Table' and 'Mapping Table'
     confluence_tables = page_body.find_all('table')
+    properties_table = confluence_tables[1]
+    mappings_table = confluence_tables[2]
 
-    # Retrieve data found in the tables of the confluence page to a list of lists
-    table_data_list = []
-    for table in confluence_tables:
-      table_data = []
-      for row in table.find_all('tr'):
-        cells = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
-        table_data.append(cells)
-      table_data_list.append(table_data)
-
-    log_info("Confluence content parsed into a list of lists type")
+    # Extract confluence tables into workable dictionaries
+    spec_dict = parse_spec_table(properties_table)
+    mapping_dict = parse_mapping_table(mappings_table)
 
     if notebook_type in ("DW CL", "CONSOLIDATION LOGIC"):
-      log_info("Processing DW CL requirements")
-      table_data_list.insert(0, [[[1,2],[1,2]], [[1,2],[1,2]]])
-      notebook_name = table_data_list[1][7][1]
-    
-      squad = table_data_list[1][3][1].split("_")[0]
-      
-      source_tables_list = []
-      for row in table_data_list[1][11:]:
-        if row[0] == "Orchestration": # end of source tables
-          break
-        else:
-          table_full_path = row[0].split(':')[-1].split('.')
-          name = table_full_path[2]
-          schema = table_full_path[1]
-          catalog = table_full_path[0].replace("{dev/pp/prd}", "dev")
-          condition = row[1].replace(" in ", ".isin()")
-          source_tables_list.append(SimpleTable(name, schema, catalog, condition))
+        log_info("Processing DW CL requirements")
 
-      name = table_data_list[1][1][1]
-      schema = table_data_list[1][4][1]
-      catalog = table_data_list[1][3][1].split("_")[0] + "_dev"
-      description = table_data_list[1][2][1]
-    
-      # final table columns
-      column_list = []
-      for row in table_data_list[2][2:]:
-        if not any(char in row[0] for char in [" ", ":"]):
-          if "general_data" in row[0]:
-            continue
-          print(row[2])
-          pk = True if "(PK)" in row[2] else False
-          flg_to_encrypt = True if squad.upper() == "PEOPLE" else False
-          column_list.append(Column(name=row[0], data_type=row[1], description=row[2], primary_key=pk, flg_to_encrypt=flg_to_encrypt))
-    
-      # PK
-      # Use regular expression to find the substring
-      match = re.search(r'Using:(.*?)When matched(?:\s+then)?\s+update:', table_data_list[2][2][7])
+        spec_dict['table']['squad'] = spec_dict['table']['catalog'].split("_")[0]
+        spec_dict['table']['catalog'] = spec_dict['table']['catalog'].split("_")[0] + "_dev"
+        spec_dict['table']['full_path'] = spec_dict['table']['catalog'] + '.' + spec_dict['table']['schema'] + '.' + spec_dict['table']['table name']
+        for source_table in spec_dict['sources']:
+            source_table['filter'].replace(" in ", ".isin()")
 
-      pattern = r'(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
-      
-      # Check if a match is found and extract the substring
-      if match:
-        substring = match.group(1).strip()
-      else:
-        log_warn("No match found in Merge Logic section")
-        substring = ''
+        # Source Tables
+        source_tables_list = []
+        for table in spec_dict['sources']:
+            table['catalog'] = table['full_table_name'].split(".")[0]
+            table['schema'] = table['full_table_name'].split(".")[1]
+            table['table_name'] = table['full_table_name'].split(".")[2]
+            source_tables_list.append(SimpleTable(name=table['table_name'], schema=table['schema'], catalog=table['catalog'], condition=table['filter']))
 
-      matches = re.findall(pattern, substring, re.DOTALL)
-
-      # Each match is a tuple, the full block starts with group[0]
-      pk = []
-      for match in re.finditer(pattern, substring, re.DOTALL):
-        pk.append(match.group())
-
-      # scd type
-      if table_data_list[1][5][0].replace(" ", "") in 'SCDType(OnlyDimensions)':
-        if table_data_list[1][5][1] == 'N/A':
-          scd_type = 'N/A (Table is not a dimension)'
-        else:
-          scd_type = table_data_list[1][5][1]
-      else:
-        log_error("Table design data is not in the expected format")
-    
-      # table_columns_to_update
-      # Use regular expression to find the substring
-      match = re.search(r'When matched(?:\s+then)?\s+update:(.*?)When not matched:', table_data_list[2][2][7])
-
-      # Check if a match is found and extract the substring
-      if match:
-        substring = match.group(1).strip()
-      else:
-        log_warn("No match found in Merge Logic section")
-        substring = ''
-
-      
-
-      # Each match is a tuple, the full block starts with group[0]
-      columns_to_update = []
-      for match in re.finditer(pattern, substring, re.DOTALL):
-        columns_to_update.append(match.group())
-
-      if 'dtm_updated_at' not in columns_to_update:
-        columns_to_update.append('dtm_updated_at')
-        
-      final_table = ComplexTable(name, schema, catalog, description, column_list, pk, scd_type, columns_to_update)
-
-    elif notebook_type == "PRE-ING HR":
-      log_info("Processing PRE-ING HR requirements")
-      notebook_name = table_data_list[2][4][1]
-      table_name = table_data_list[2][0][1]
-      schema = table_data_list[2][3][1].split('.')[1]
-      catalog = table_data_list[2][3][1].split("_")[0] + "_dev"
-      description = table_data_list[2][1][1]
-      squad = table_data_list[2][3][1].split("_")[0]
-
-      csv_column_list = []
-      validation = []
-      for i, row in enumerate(table_data_list[1][1:]):
-        if not any(char in row[0] for char in [" ", ":"]):
-          name=row[0]
-          data_type='string'
-          validation.append({'rule_description': row[2], 'error_message': row[3]})
-        else:
-          validation.append({'rule_description': row[0], 'error_message': row[1]})
-
-        if i+2 >= len(table_data_list[1]) or not any(char in table_data_list[1][i+2][0] for char in [" ", ":"]):
-          desc = 'N/A'
-          pk = 'N/A'
-          for r in table_data_list[3][1:]:
-            if r[3] == name:
-              desc = r[6]
-              pk = "True" if r[5] == 'PK' else "False"
-              break
-          csv_column_list.append(Column(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
-          validation = []
-
-      csv_source_table = ComplexTable(table_name, schema, catalog, description, csv_column_list)
-      source_tables_list = [csv_source_table]
-
-      schema = table_data_list[2][2][1].split('.')[1]
-      catalog = table_data_list[2][2][1].split("_")[0] + "_dev"
-      
-      # PK
-      # Use regular expression to find the substring
-      match = re.search(r'Using:(.*?)When matched update:', table_data_list[3][1][9])
-
-      # Check if a match is found and extract the substring
-      if match:
-        substring = match.group(1).strip()
-      else:
-        log_error("No match found")
-
-      pattern = r'(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
-      matches = re.findall(pattern, substring, re.DOTALL)
-
-      # Each match is a tuple, the full block starts with group[0]
-      pk = []
-      for match in re.finditer(pattern, substring, re.DOTALL):
-        pk.append(match.group())
-
-      # table_columns_to_update
-      # Use regular expression to find the substring
-      match = re.search(r'When matched update:(.*?)When not matched:', table_data_list[3][1][9])
-
-      # Check if a match is found and extract the substring
-      if match:
-        substring = match.group(1).strip()
-      else:
-        log_error("In confluence page no match found in Merge Column")
-
-      pattern = r'(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
-
-      # Each match is a tuple, the full block starts with group[0]
-      columns_to_update = []
-      for match in re.finditer(pattern, substring, re.DOTALL):
-        columns_to_update.append(match.group())
-
-      if 'dtm_updated_at' not in columns_to_update:
-        columns_to_update.append('dtm_updated_at')
-
-      column_list = []
-      for row in table_data_list[3][1:]:
-        if not any(char in row[3] for char in [" ", ":"]):
-          primary_key = "True" if row[5] == 'PK' else "False"
-          column_list.append(Column(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
-
-      scd_type = 'N/A (Table is not a dimension)'
-      final_table = ComplexTable(table_name, schema, catalog, description, column_list, pk, scd_type, columns_to_update)
-    elif notebook_type == "WDL CSAS" or notebook_type == "WDL SSO":
-      log_info("Processing WDL CSAS requirements")
-      notebook_name = table_data_list[2][7][1]
-      sql_notebook_name = 'dlm_dw.' + notebook_name + '.sql'
-      table_name = table_data_list[2][1][1]
-      schema = table_data_list[2][3][1].split('.')[1]
-      catalog = table_data_list[2][3][1].split('.')[0].replace("{dev/pp/prd}", "dev")
-      description = table_data_list[2][1][1]
-      squad = "SSO"
-      example_csv_row = self._fetch_example_row(confluence_url)
-
-
-      csv_column_list = []
-      validation = []
-      for i, row in enumerate(table_data_list[1][1:]):
-        if not any(char in row[0] for char in [" ", ":"]) or row[0].upper() == 'ALL FILE':
-          name = row[0]
-          data_type='string'
-          validation.append({'rule_description': row[2], 'error_message': row[3]})
-        else:
-          if len(row) == 1:
-            row.append('N/A')
-          validation.append({'rule_description': row[0], 'error_message': row[1]})
-
-        if i+2 >= len(table_data_list[1]) or not any(char in table_data_list[1][i+2][0] for char in [" ", ":"]):
-          desc = 'N/A'
-          pk = 'N/A'
-          for r in table_data_list[3][1:]:
-            if r[3] == name:
-              desc = r[6]
-              pk = "True" if r[5] == 'PK' else "False"
-              break
-          csv_column_list.append(Column(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
-          validation = []
-
-      csv_source_table = ComplexTable(table_name, schema=None, catalog=None, description=description, column_list=csv_column_list)
-      source_tables_list = [csv_source_table]
-      
-      if table_data_list[3][1][9] != "Replace All":
-        # PK
-        # Use regular expression to find the substring
-        match = re.search(r'Using:(.*?)When matched update:', table_data_list[3][1][9])
-
-        # Check if a match is found and extract the substring
-        if match:
-          substring = match.group(1).strip()
-        else:
-          log_error("No match found")
-  
-        pattern = r'(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
-        matches = re.findall(pattern, substring, re.DOTALL)
-
-        # Each match is a tuple, the full block starts with group[0]
+        # Final table columns
+        column_list = []
         pk = []
-        for match in re.finditer(pattern, substring, re.DOTALL):
-          pk.append(match.group())
-
+        for col in mapping_dict['columns']:
+            if any(char in col['column_name'] for char in [" ", ":"]):
+               continue
+            
+            if "(PK)" in col['column_description']:
+               col['primary_key'] = True
+               pk.append(col['column_name'])
+            else:
+               col['primary_key'] = False
+            col['flg_to_encrypt'] = True if spec_dict['table']['squad'].upper() == "PEOPLE" else False
+            column_list.append(Column(name=col['column_name'], data_type=col['data_type'], description=col['column_description'], primary_key=col['primary_key'], flg_to_encrypt=col['flg_to_encrypt']))
+        
         # table_columns_to_update
-        # Use regular expression to find the substring
-        match = re.search(r'When matched update:(.*?)When not matched:', table_data_list[3][1][9])
-
-        # Check if a match is found and extract the substring
-        if match:
-          substring = match.group(1).strip()
-        else:
-          log_error("In confluence page no match found in Merge Column")
-        
-        pattern = r'(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
-
-        # Each match is a tuple, the full block starts with group[0]
         columns_to_update = []
-        for match in re.finditer(pattern, substring, re.DOTALL):
-          columns_to_update.append(match.group())
+        for col in mapping_dict['columns']:
+            if col['primary_key'] != True and col['column_name'] != 'dtm_created_at':
+                columns_to_update.append(col['column_name'])
+            
+        final_table = ComplexTable(
+           name=spec_dict['table']['table name'], 
+           schema=spec_dict['table']['schema'], 
+           catalog=spec_dict['table']['catalog'], 
+           description=spec_dict['table']['table description'], 
+           column_list=column_list, 
+           pk=pk, 
+           scd_type=spec_dict['table']['scd type (only dimensions)'], 
+           columns_to_update=columns_to_update)
 
-        if 'dtm_updated_at' not in columns_to_update:
-          columns_to_update.append('dtm_updated_at')
+    # elif notebook_type == "PRE-ING HR":
+    #   log_info("Processing PRE-ING HR requirements")
+    #   notebook_name = table_data_list[2][4][1]
+    #   table_name = table_data_list[2][0][1]
+    #   schema = table_data_list[2][3][1].split('.')[1]
+    #   catalog = table_data_list[2][3][1].split("_")[0] + "_dev"
+    #   description = table_data_list[2][1][1]
+    #   squad = table_data_list[2][3][1].split("_")[0]
 
-      else:
-        pk = []
+    #   csv_column_list = []
+    #   validation = []
+    #   for i, row in enumerate(table_data_list[1][1:]):
+    #     if not any(char in row[0] for char in [" ", ":"]):
+    #       name=row[0]
+    #       data_type='string'
+    #       validation.append({'rule_description': row[2], 'error_message': row[3]})
+    #     else:
+    #       validation.append({'rule_description': row[0], 'error_message': row[1]})
+
+    #     if i+2 >= len(table_data_list[1]) or not any(char in table_data_list[1][i+2][0] for char in [" ", ":"]):
+    #       desc = 'N/A'
+    #       pk = 'N/A'
+    #       for r in table_data_list[3][1:]:
+    #         if r[3] == name:
+    #           desc = r[6]
+    #           pk = "True" if r[5] == 'PK' else "False"
+    #           break
+    #       csv_column_list.append(Column(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
+    #       validation = []
+
+    #   csv_source_table = ComplexTable(table_name, schema, catalog, description, csv_column_list)
+    #   source_tables_list = [csv_source_table]
+
+    #   schema = table_data_list[2][2][1].split('.')[1]
+    #   catalog = table_data_list[2][2][1].split("_")[0] + "_dev"
       
-      column_list = []
-      for row in table_data_list[3][1:]:
-        if not any(char in row[3] for char in [" ", ":"]):
-          if row[5] == 'PK':
-            primary_key = "True"
-            pk.append(row[3])
-          else:
-            primary_key = "False"
-          column_list.append(Column(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
+    #   # PK
+    #   # Use regular expression to find the substring
+    #   match = re.search(r'Using:(.*?)When matched update:', table_data_list[3][1][9])
 
-      if table_data_list[3][1][9] == "Replace All":
-        columns_to_update = column_list
+    #   # Check if a match is found and extract the substring
+    #   if match:
+    #     substring = match.group(1).strip()
+    #   else:
+    #     log_error("No match found")
+
+    #   pattern = r'(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
+    #   matches = re.findall(pattern, substring, re.DOTALL)
+
+    #   # Each match is a tuple, the full block starts with group[0]
+    #   pk = []
+    #   for match in re.finditer(pattern, substring, re.DOTALL):
+    #     pk.append(match.group())
+
+    #   # table_columns_to_update
+    #   # Use regular expression to find the substring
+    #   match = re.search(r'When matched update:(.*?)When not matched:', table_data_list[3][1][9])
+
+    #   # Check if a match is found and extract the substring
+    #   if match:
+    #     substring = match.group(1).strip()
+    #   else:
+    #     log_error("In confluence page no match found in Merge Column")
+
+    #   pattern = r'(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
+
+    #   # Each match is a tuple, the full block starts with group[0]
+    #   columns_to_update = []
+    #   for match in re.finditer(pattern, substring, re.DOTALL):
+    #     columns_to_update.append(match.group())
+
+    #   if 'dtm_updated_at' not in columns_to_update:
+    #     columns_to_update.append('dtm_updated_at')
+
+    #   column_list = []
+    #   for row in table_data_list[3][1:]:
+    #     if not any(char in row[3] for char in [" ", ":"]):
+    #       primary_key = "True" if row[5] == 'PK' else "False"
+    #       column_list.append(Column(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
+
+    #   scd_type = 'N/A (Table is not a dimension)'
+    #   final_table = ComplexTable(table_name, schema, catalog, description, column_list, pk, scd_type, columns_to_update)
+    # elif notebook_type == "WDL CSAS" or notebook_type == "WDL SSO":
+    #   log_info("Processing WDL CSAS requirements")
+    #   notebook_name = table_data_list[2][7][1]
+    #   sql_notebook_name = 'dlm_dw.' + notebook_name + '.sql'
+    #   table_name = table_data_list[2][1][1]
+    #   schema = table_data_list[2][3][1].split('.')[1]
+    #   catalog = table_data_list[2][3][1].split('.')[0].replace("{dev/pp/prd}", "dev")
+    #   description = table_data_list[2][1][1]
+    #   squad = "SSO"
+    #   example_csv_row = self._fetch_example_row(confluence_url)
+
+
+    #   csv_column_list = []
+    #   validation = []
+    #   for i, row in enumerate(table_data_list[1][1:]):
+    #     if not any(char in row[0] for char in [" ", ":"]) or row[0].upper() == 'ALL FILE':
+    #       name = row[0]
+    #       data_type='string'
+    #       validation.append({'rule_description': row[2], 'error_message': row[3]})
+    #     else:
+    #       if len(row) == 1:
+    #         row.append('N/A')
+    #       validation.append({'rule_description': row[0], 'error_message': row[1]})
+
+    #     if i+2 >= len(table_data_list[1]) or not any(char in table_data_list[1][i+2][0] for char in [" ", ":"]):
+    #       desc = 'N/A'
+    #       pk = 'N/A'
+    #       for r in table_data_list[3][1:]:
+    #         if r[3] == name:
+    #           desc = r[6]
+    #           pk = "True" if r[5] == 'PK' else "False"
+    #           break
+    #       csv_column_list.append(Column(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
+    #       validation = []
+
+    #   csv_source_table = ComplexTable(table_name, schema=None, catalog=None, description=description, column_list=csv_column_list)
+    #   source_tables_list = [csv_source_table]
+      
+    #   if table_data_list[3][1][9] != "Replace All":
+    #     # PK
+    #     # Use regular expression to find the substring
+    #     match = re.search(r'Using:(.*?)When matched update:', table_data_list[3][1][9])
+
+    #     # Check if a match is found and extract the substring
+    #     if match:
+    #       substring = match.group(1).strip()
+    #     else:
+    #       log_error("No match found")
+  
+    #     pattern = r'(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk|buk|dat_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
+    #     matches = re.findall(pattern, substring, re.DOTALL)
+
+    #     # Each match is a tuple, the full block starts with group[0]
+    #     pk = []
+    #     for match in re.finditer(pattern, substring, re.DOTALL):
+    #       pk.append(match.group())
+
+    #     # table_columns_to_update
+    #     # Use regular expression to find the substring
+    #     match = re.search(r'When matched update:(.*?)When not matched:', table_data_list[3][1][9])
+
+    #     # Check if a match is found and extract the substring
+    #     if match:
+    #       substring = match.group(1).strip()
+    #     else:
+    #       log_error("In confluence page no match found in Merge Column")
         
-      scd_type = 'N/A (Table is not a dimension)'
-      final_table = ComplexTable(table_name, schema, catalog, description, column_list, pk, scd_type, columns_to_update)
-      return WDLNotebook(notebook_name,
-                        sql_notebook_name,
-                        squad,
-                        source_tables_list,
-                        final_table,
-                        notebook_type,
-                        confluence_url,
-                        self.user_email,
-                        flow_owner='CSAS',
-                        example_csv_row = example_csv_row)
-    else:
-      log_error("There is no processing logic in Atlassian Utils for this table type")
+    #     pattern = r'(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn).*?(?=(suk_|ssk_|buk_|cod_|nme_|dsc_|hrc_|rnk_|seq_|amt_|num_|pct_|qty_|rte_|val_|txt_|flg_|dat_|dtm_|pak_|rn)|$)'
 
-    if squad == "people":
-      squad = "People"
-    elif squad in ("sales", "SSO"):
-      squad = "SSO"
-    elif squad == "general":
-      squad = "SSO"
+    #     # Each match is a tuple, the full block starts with group[0]
+    #     columns_to_update = []
+    #     for match in re.finditer(pattern, substring, re.DOTALL):
+    #       columns_to_update.append(match.group())
+
+    #     if 'dtm_updated_at' not in columns_to_update:
+    #       columns_to_update.append('dtm_updated_at')
+
+    #   else:
+    #     pk = []
+      
+    #   column_list = []
+    #   for row in table_data_list[3][1:]:
+    #     if not any(char in row[3] for char in [" ", ":"]):
+    #       if row[5] == 'PK':
+    #         primary_key = "True"
+    #         pk.append(row[3])
+    #       else:
+    #         primary_key = "False"
+    #       column_list.append(Column(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
+
+    #   if table_data_list[3][1][9] == "Replace All":
+    #     columns_to_update = column_list
+        
+    #   scd_type = 'N/A (Table is not a dimension)'
+    #   final_table = ComplexTable(table_name, schema, catalog, description, column_list, pk, scd_type, columns_to_update)
+    #   return WDLNotebook(notebook_name,
+    #                     sql_notebook_name,
+    #                     squad,
+    #                     source_tables_list,
+    #                     final_table,
+    #                     notebook_type,
+    #                     confluence_url,
+    #                     self.user_email,
+    #                     flow_owner='CSAS',
+    #                     example_csv_row = example_csv_row)
+    # else:
+    #   log_error("There is no processing logic in Atlassian Utils for this table type")
+
+    if spec_dict['table']['squad'] == "people":
+      spec_dict['table']['squad'] = "People"
+    elif spec_dict['table']['squad'] in ("sales", "SSO"):
+      spec_dict['table']['squad'] = "SSO"
+    elif spec_dict['table']['squad'] == "general":
+      spec_dict['table']['squad'] = "SSO"
     else:
       log_warn("Catalog is not sales or people. Squad defaulted to SSO.")
-      squad = "SSO"
+      spec_dict['table']['squad'] = "SSO"
 
     notebook_classes = {
         "DW CL": DWCLNotebook,
@@ -488,8 +681,8 @@ class ManageAtlassian():
 
     notebook_subclass = notebook_classes[notebook_type]
 
-    return notebook_subclass(notebook_name,
-            squad,
+    return notebook_subclass(spec_dict['notebook']['name'],
+            spec_dict['table']['squad'],
             source_tables_list,
             final_table,
             notebook_type,
