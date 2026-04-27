@@ -11,7 +11,7 @@ import re
 
 # Custom modules
 from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
-from src.utils.notebook_utils import Notebook, Column, SimpleTable, ComplexTable, DWCLNotebook, PreIngNotebook
+from src.notebook.models import NotebookSpec, ColumnSpec, SimpleTable, ComplexTable, DWCLNotebook, PreIngNotebook
 
 
 def parse_spec_table(table: Tag) -> dict:
@@ -455,7 +455,7 @@ class ManageAtlassian():
             else:
                col['primary_key'] = False
             col['flg_to_encrypt'] = True if spec_dict['table']['squad'].upper() == "PEOPLE" else False
-            column_list.append(Column(name=col['column_name'], data_type=col['data_type'], description=col['column_description'], primary_key=col['primary_key'], flg_to_encrypt=col['flg_to_encrypt']))
+            column_list.append(ColumnSpec(name=col['column_name'], data_type=col['data_type'], description=col['column_description'], primary_key=col['primary_key'], flg_to_encrypt=col['flg_to_encrypt']))
         
         # table_columns_to_update
         columns_to_update = []
@@ -500,7 +500,7 @@ class ManageAtlassian():
     #           desc = r[6]
     #           pk = "True" if r[5] == 'PK' else "False"
     #           break
-    #       csv_column_list.append(Column(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
+    #       csv_column_list.append(ColumnSpec(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
     #       validation = []
 
     #   csv_source_table = ComplexTable(table_name, schema, catalog, description, csv_column_list)
@@ -551,7 +551,7 @@ class ManageAtlassian():
     #   for row in table_data_list[3][1:]:
     #     if not any(char in row[3] for char in [" ", ":"]):
     #       primary_key = "True" if row[5] == 'PK' else "False"
-    #       column_list.append(Column(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
+    #       column_list.append(ColumnSpec(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
 
     #   scd_type = 'N/A (Table is not a dimension)'
     #   final_table = ComplexTable(table_name, schema, catalog, description, column_list, pk, scd_type, columns_to_update)
@@ -587,7 +587,7 @@ class ManageAtlassian():
     #           desc = r[6]
     #           pk = "True" if r[5] == 'PK' else "False"
     #           break
-    #       csv_column_list.append(Column(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
+    #       csv_column_list.append(ColumnSpec(name=name, data_type=data_type, description=desc, primary_key=pk, validation=validation))
     #       validation = []
 
     #   csv_source_table = ComplexTable(table_name, schema=None, catalog=None, description=description, column_list=csv_column_list)
@@ -643,7 +643,7 @@ class ManageAtlassian():
     #         pk.append(row[3])
     #       else:
     #         primary_key = "False"
-    #       column_list.append(Column(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
+    #       column_list.append(ColumnSpec(name=row[3], data_type=row[4], description=row[6], primary_key=primary_key))
 
     #   if table_data_list[3][1][9] == "Replace All":
     #     columns_to_update = column_list
