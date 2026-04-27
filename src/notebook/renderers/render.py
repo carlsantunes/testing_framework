@@ -1,3 +1,5 @@
+from src.notebook.cells import NotebookCell
+
 def _magic_cell(magic: str, content: str) -> str:
     lines = content.splitlines() or [""]
     return "\n".join([f"# MAGIC %{magic}"] + [f"# MAGIC {line}" for line in lines])

@@ -20,3 +20,6 @@ def sql_cell(sql: str) -> NotebookCell:
         content=dedent(sql).strip()
     )
 
+
+def run_cell(path: str) -> NotebookCell:
+    return py_cell(f'%run "{path}"')
