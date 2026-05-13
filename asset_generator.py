@@ -18,16 +18,17 @@ from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_err
 from src.utils.databricks_utils import ManageDatabricks
 from src.utils.azure_devops_utils import ManageAzureDevOps
 from src.utils.atlassian_utils import ManageAtlassian
-from src.generate import generate_notebook_content
-
-# COMMAND ----------
-
-# MAGIC %run "/Users/cvantunes@ext.worten.pt/Automation/Config File"
+from src.generate import generate_table_notebook_content, generate_view_notebook_content
+from src.utils.config_utils import get_config
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC #### Manage Logging
+# MAGIC #### Get Global Config Variables
+
+# COMMAND ----------
+
+cfg = get_config()
 
 # COMMAND ----------
 

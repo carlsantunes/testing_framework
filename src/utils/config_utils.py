@@ -1,19 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import lru_cache
+from databricks.sdk.runtime import dbutils
 
-def _get_dbutils():
-    """
-    dbutils exists automatically in Databricks notebook/job context.
-    If you're running outside Databricks, you'll need an env-var fallback.
-    """
-    try:
-        return dbutils  # noqa: F821 (provided by Databricks)
-    except NameError as e:
-        raise RuntimeError(
-            "dbutils is not available. Run this on a Databricks cluster "
-            "or implement an env-var fallback for local dev."
-        ) from e
 
 @dataclass(frozen=True)
 class Config:
@@ -36,28 +25,27 @@ class Config:
         Loads configuration from Databricks secrets.
         Databricks recommends storing sensitive values as secrets and referencing them in code. [1](https://docs.databricks.com/aws/en/security/secrets/)
         """
-        d = _get_dbutils()
 
         # Secrets
-        databricks_token = d.secrets.get(scope=scope, key="DATABRICKS_TOKEN")
-        atlassian_token = d.secrets.get(scope=scope, key="ATLASSIAN_TOKEN")
-        azure_devops_token = d.secrets.get(scope=scope, key="AZURE_DEVOPS_TOKEN")
+        databricks_token = dbutils.secrets.get(scope=scope, key="DATABRICKS_TOKEN")
+        atlassian_token = dbutils.secrets.get(scope=scope, key="ATLASSIAN_TOKEN")
+        azure_devops_token = dbutils.secrets.get(scope=scope, key="AZURE_DEVOPS_TOKEN")
 
         # Settings (can also be secrets if you want everything in one place)
-        databricks_instance = d.secrets.get(scope=scope, key="DATABRICKS_INSTANCE")
-        jira_base_url = d.secrets.get(scope=scope, key="JIRA_BASE_URL")
-        jira_project_key = d.secrets.get(scope=scope, key="JIRA_PROJECT_KEY")
-        databricks_dev_repo_url = d.secrets.get(scope=scope, key="DATABRICKS_DEV_REPO_URL")
-        dlm_flows_repo_url = d.secrets.get(scope=scope, key="DLM_FLOWS_REPO_URL")
+        databricks_instance = dbutils.secrets.get(scope=scope, key="DATABRICKS_INSTANCE")
+        jira_base_url = dbutils.secrets.get(scope=scope, key="JIRA_BASE_URL")
+        jira_project_key = dbutils.secrets.get(scope=scope, key="JIRA_PROJECT_KEY")
+        databricks_dev_repo_url = dbutils.secrets.get(scope=scope, key="DATABRICKS_DEV_REPO_URL")
+        dlm_flows_repo_url = dbutils.secrets.get(scope=scope, key="DLM_FLOW_REPO_URL")
 
         # Optional: derive current user (fallback to empty)
         try:
             user_email = (
-                d.notebook.entry_point.getDbutils()
+                dbutils.notebook.entry_point.getDbutils()
                 .notebook().getContext().userName().get()
             )
         except Exception:
-            user_email = ""
+            user_email = dbutils.secrets.get(scope=scope, key="USER_EMAIL")
 
         return cls(
             databricks_token=databricks_token,
