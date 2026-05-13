@@ -15,3 +15,4 @@ from src.notebook.sections.udf_section import FunctionDeclarationSection
 from src.notebook.sections.utilities import UtilitiesSection
 from src.notebook.sections.view_section import ViewCreationSection
 from src.notebook.sections.widgets_section import WidgetsSection
+from src.notebook.sections.view_creation import StandAloneViewCreationSection

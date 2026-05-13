@@ -3,7 +3,7 @@ from src.notebook.renderers import render_notebook
 from src.notebook.config.paths import NotebookPaths
 from src.notebook.generator.generator import NotebookGenerator
 
-def generate_notebook_content(nb):
+def generate_table_notebook_content(nb):
     paths = NotebookPaths()
     generator = NotebookGenerator([
         s.HeaderSection(),
@@ -24,4 +24,9 @@ def generate_notebook_content(nb):
         s.ViewCreationSection(),
         s.EndControlSection(staging_schema=paths.staging_schema),
     ])
+    return generator.generate(nb)
+
+def generate_view_notebook_content(nb):
+    paths = NotebookPaths()
+    generator = NotebookGenerator([s.StandAloneViewCreationSection()])
     return generator.generate(nb)
