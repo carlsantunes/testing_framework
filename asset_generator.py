@@ -18,6 +18,7 @@ from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_err
 from src.utils.databricks_utils import ManageDatabricks
 from src.utils.azure_devops_utils import ManageAzureDevOps
 from src.utils.atlassian_utils import ManageAtlassian
+from src.generate import generate_notebook_content
 
 # COMMAND ----------
 
@@ -136,7 +137,7 @@ md.associate_working_branch_git_folder(databricks_git_folder_id = databricks_rep
 # Define notebook location
 if nb.notebook_type == 'DW CL':
   notebook_path = f"{repo_workspace_path}/Transformation_Notebooks/{'HR_Analytics/' if nb.final_table.flg_is_HR_table == True else ''}{nb.notebook_name}"
-  md.create_notebook(notebook_content = nb.generate_notebook_code_string_format(), notebook_path = notebook_path)
+  md.create_notebook(notebook_content = generate_notebook_content(nb), notebook_path = notebook_path)
 
 elif nb.notebook_type == 'PRE-ING HR':
   notebook_path = f"{repo_workspace_path}/Transformation_Notebooks/HR_Analytics/Pre_Ingestion_Business/{nb.notebook_name}"
