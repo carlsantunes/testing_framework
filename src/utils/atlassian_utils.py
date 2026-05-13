@@ -92,6 +92,7 @@ def parse_spec_table(table: Tag) -> dict:
         if current_section in result:
             result[current_section][key] = value
 
+    log_info("Parsed specification table successfully")
     return result
 
 
@@ -214,6 +215,7 @@ def parse_mapping_table(table: Tag) -> dict:
             if current_col is not None:
                 columns.append(current_col)
 
+    log_info("Parsed mapping table successfully")
     return {
         "columns": columns,
         "table_level_logic": table_level_logic or [],
@@ -394,8 +396,6 @@ class ManageAtlassian():
     return second_line  # Output: Second line
 
     
-
-
   def map_design_to_notebook(self, page_title, page_body, confluence_url):
     """
         Create a notebook object with data from html page (html tables need to be in conventioned standard format).
@@ -416,7 +416,7 @@ class ManageAtlassian():
     notebook_type = page_title.split('-')[0].strip().upper()
     log_info(f"Processing requirements for a {notebook_type} table")
 
-    # Get one 'Properties Table' and 'Mapping Table'
+    # Get 'Properties Table' and 'Mapping Table'
     confluence_tables = page_body.find_all('table')
     properties_table = confluence_tables[1]
     mappings_table = confluence_tables[2]
