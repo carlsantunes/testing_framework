@@ -54,6 +54,7 @@ def parse_spec_table(table: Tag) -> dict:
             if header in result:
                 current_section = header
                 in_sources = (header == "sources")
+                log_info(f"Extrating {current_section} data...")
             continue
 
         # ===== SOURCES section =====
@@ -69,6 +70,7 @@ def parse_spec_table(table: Tag) -> dict:
                 "history": clean(cells[3].get_text())
             }
             result["sources"].append(source)
+            log_info(f"Detected {source["full_table_name"]} as a source table")
             continue
 
         # ===== ORCHESTRATION section =====
@@ -83,6 +85,7 @@ def parse_spec_table(table: Tag) -> dict:
                 value = clean(cells[1].get_text())
 
             result["orchestration"][key] = value
+            log_info(f"Extracting {key}")
             continue
 
         # ===== GENERAL key-value sections =====
@@ -91,6 +94,7 @@ def parse_spec_table(table: Tag) -> dict:
 
         if current_section in result:
             result[current_section][key] = value
+            log_info(f"Extracting {key}")
 
     log_info("Parsed specification table successfully")
     return result
