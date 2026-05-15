@@ -4,7 +4,7 @@
 
 # COMMAND ----------
 
-## Imports
+# Standard Imports
 import requests # Make API requests
 from requests.auth import HTTPBasicAuth # Authentication for API requests
 import json # Manage JSON content
@@ -14,11 +14,12 @@ import base64 # encode/decode string with notebook content to send/receive as pa
 
 # COMMAND ----------
 
+# Custom Imports
 from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
 from src.utils.databricks_utils import ManageDatabricks
 from src.utils.azure_devops_utils import ManageAzureDevOps
 from src.utils.atlassian_utils import ManageAtlassian
-from src.generate import generate_table_notebook_content, generate_view_notebook_content
+from src.notebook.generator.generate import generate_notebook_content
 from src.utils.config_utils import get_config
 
 # COMMAND ----------
@@ -97,6 +98,10 @@ nb = confluence.map_design_to_notebook(
 
 # COMMAND ----------
 
+nb.source_tables[0].columns
+
+# COMMAND ----------
+
 if "WDL" in page_title:
   repo_id = "DLM-Flows"
   repo_url = cfg.dlm_flows_repo_url
@@ -136,9 +141,13 @@ md.associate_working_branch_git_folder(databricks_git_folder_id = databricks_rep
 # COMMAND ----------
 
 # Define notebook location
-if nb.notebook_type == 'DW CL':
+if nb.notebook_type in ('DW CL', 'CONSOLIDATION LOGIC'):
+  if "vw" in nb.final_table.name:
+    kind = "view"
+  else:
+    kind = "table"
   notebook_path = f"{repo_workspace_path}/Transformation_Notebooks/{'HR_Analytics/' if nb.final_table.flg_is_HR_table == True else ''}{nb.notebook_name}"
-  md.create_notebook(notebook_content = generate_notebook_content(nb), notebook_path = notebook_path)
+  md.create_notebook(notebook_content = generate_notebook_content(nb, kind), notebook_path = notebook_path)
 
 elif nb.notebook_type == 'PRE-ING HR':
   notebook_path = f"{repo_workspace_path}/Transformation_Notebooks/HR_Analytics/Pre_Ingestion_Business/{nb.notebook_name}"

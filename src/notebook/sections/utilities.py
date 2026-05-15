@@ -1,4 +1,4 @@
-from src.utils.cell_helpers import md_cell, run_cell
+from src.notebook.cells.cell_helpers import md_cell, run_cell
 from src.notebook.config import NotebookPaths
 from src.notebook.models import NotebookSpec
 from src.notebook.cells import NotebookCell

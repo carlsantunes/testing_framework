@@ -3,7 +3,7 @@ from typing import List
 from src.notebook.cells import NotebookCell
 from src.notebook.models import NotebookSpec
 from src.notebook.sections.section import Section
-from src.utils.cell_helpers import md_cell, py_cell, sql_cell
+from src.notebook.cells.cell_helpers import md_cell, py_cell, sql_cell
 
 class FunctionDeclarationSection(Section):
     def enabled(self, spec: NotebookSpec) -> bool:

@@ -3,9 +3,10 @@ from src.notebook.renderers import render_notebook
 from src.notebook.config.paths import NotebookPaths
 from src.notebook.generator.generator import NotebookGenerator
 
-def generate_table_notebook_content(nb):
-    paths = NotebookPaths()
-    generator = NotebookGenerator([
+
+def get_sections_knowing_notebook_type(kind, paths):
+    if kind == "table":
+        return [
         s.HeaderSection(),
         s.UtilitiesSection(paths),
         s.FunctionDeclarationSection(),
@@ -19,14 +20,20 @@ def generate_table_notebook_content(nb):
         s.BusinessLogicSection(),
         s.ExitIfEmptySection(),
         s.EncryptionSection(),
-        s.StagingSection(staging_schema=paths.staging_schema),
-        s.MergeDWSection(staging_schema=paths.staging_schema),
+        s.StagingSection(),
+        s.MergeDWSection(),
         s.ViewCreationSection(),
-        s.EndControlSection(staging_schema=paths.staging_schema),
-    ])
-    return generator.generate(nb)
+        s.EndControlSection(),
+    ]
 
-def generate_view_notebook_content(nb):
+    if kind == "view":
+        return [s.StandAloneViewCreationSection()]
+
+    raise ValueError(f"Unknown kind: {kind}")
+
+
+def generate_notebook_content(nb, kind="table"):
     paths = NotebookPaths()
-    generator = NotebookGenerator([s.StandAloneViewCreationSection()])
+    sections = get_sections_knowing_notebook_type(kind, paths)
+    generator = NotebookGenerator(sections)
     return generator.generate(nb)

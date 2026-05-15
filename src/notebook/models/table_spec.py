@@ -64,7 +64,7 @@ class SimpleTable(TableSpec):
   
 ## FinalTable class (stores final table metadata)
 class ComplexTable(TableSpec):
-  def __init__(self, name, schema, catalog, description, column_list, pk='N/A', scd_type='N/A', columns_to_update='N/A'):
+  def __init__(self, name, schema, catalog, description, column_list, pk='N/A', scd_type='N/A', columns_to_update='N/A', condition=""):
     super().__init__(name, schema, catalog)
     
     self.description = description
@@ -79,6 +79,8 @@ class ComplexTable(TableSpec):
     self.scd_type = scd_type
     self.columns_to_update = columns_to_update
     self.columns = column_list
+
+    self.filter = condition
   
   def __str__(self):
     columns_str = "\n".join([str(column) for column in self.columns])

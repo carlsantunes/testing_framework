@@ -1,8 +1,7 @@
 # Class to interact with Atlassian products (Confluence and Jira). Reads documentation, reads and creates Jira issues, etc.
 from __future__ import annotations
 from typing import Any, Optional, List, Dict, Tuple, Callable
-
-
+from pyspark.sql import SparkSession
 from bs4 import BeautifulSoup, Tag
 from requests.auth import HTTPBasicAuth
 import requests
@@ -13,6 +12,29 @@ import re
 from src.utils.logging_utils import log_setup_logic, log_info, log_warn, log_error, log_check_not_pass, log_check_pass
 from src.notebook.models import NotebookSpec, ColumnSpec, SimpleTable, ComplexTable, DWCLNotebook, PreIngNotebook
 
+def get_table_columns(catalog: str, schema: str, table_name: str):
+    """
+    Portable column introspection for Spark tables/views.
+
+    Tries:
+      1) catalog.schema.table (if catalog and schema provided)
+      2) schema.table (if schema provided)
+      3) table
+
+    Returns a list of dicts with: name, data_type, nullable, metadata
+    """
+    spark = SparkSession.getActiveSession()
+    catalog = catalog.replace("{dev/pp/prd}", "prd")
+    full_table_name = f"{catalog}.{schema}.{table_name}"
+    try:
+      print(full_table_name)
+      df = spark.read.table(full_table_name)
+      print([f.name for f in df.columns])
+      return [f.name for f in df.schema.fields]
+    except Exception:
+      print("hello")
+      return []
+    
 
 def parse_spec_table(table: Tag) -> dict:
     """
@@ -61,16 +83,26 @@ def parse_spec_table(table: Tag) -> dict:
         if current_section == "sources":
             # Skip header row
             if cells[0].find("strong"):
+                l = len(cells)
                 continue
+            
+            if l == 4: # sources table has abbreviation column
+              source = {
+                  "full_table_name": clean(cells[0].get_text()),
+                  "abbreviation": clean(cells[1].get_text()),
+                  "filter": clean(cells[2].get_text()),
+                  "history": clean(cells[3].get_text())
+              }
+            elif l == 3: # sources table does not have abbreviation column
+              source = {
+                  "full_table_name": clean(cells[0].get_text()),
+                  "abbreviation": "",
+                  "filter": clean(cells[1].get_text()),
+                  "history": clean(cells[2].get_text())
+              }
 
-            source = {
-                "full_table_name": clean(cells[0].get_text()),
-                "abbreviation": clean(cells[1].get_text()),
-                "filter": clean(cells[2].get_text()),
-                "history": clean(cells[3].get_text())
-            }
             result["sources"].append(source)
-            log_info(f"Detected {source["full_table_name"]} as a source table")
+            log_info(f"Detected {source['full_table_name']} as a source table")
             continue
 
         # ===== ORCHESTRATION section =====
@@ -356,6 +388,8 @@ class ManageAtlassian():
   
 
 
+
+
   def _fetch_example_row(self, confluence_url):
 
     # ---- Step 1: Get attachments for the page ----
@@ -444,7 +478,16 @@ class ManageAtlassian():
             table['catalog'] = table['full_table_name'].split(".")[0]
             table['schema'] = table['full_table_name'].split(".")[1]
             table['table_name'] = table['full_table_name'].split(".")[2]
-            source_tables_list.append(SimpleTable(name=table['table_name'], schema=table['schema'], catalog=table['catalog'], condition=table['filter']))
+            source_tables_list.append(ComplexTable(
+                            name=table['table_name'], 
+                            schema=table['schema'],
+                            catalog=table['catalog'],
+                            description="",
+                            column_list=get_table_columns(table['catalog'], table['schema'], table['table_name']),
+                            pk=[],
+                            scd_type="",
+                            columns_to_update=[],
+                            condition=table['filter']))
 
         # Final table columns
         column_list = []

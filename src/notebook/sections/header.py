@@ -4,7 +4,7 @@ from typing import Dict, List
 from src.notebook.models import NotebookSpec, TableSpec
 from src.notebook.sections.section import Section
 from src.notebook.cells import NotebookCell
-from src.utils.cell_helpers import md_cell
+from src.notebook.cells.cell_helpers import md_cell
 
 
 class HeaderSection(Section):
